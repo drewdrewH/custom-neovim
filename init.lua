@@ -3,35 +3,15 @@
 -- Set <space> as the leader key
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
--- init.lua
 
--- Command-click for navigating to definition (class or function)
-vim.api.nvim_set_keymap(
-  "n",
-  "<A-S>", -- Command + Click on Mac
-  "<cmd>Lspsaga peek_definition<CR>", -- Show class definition in a modal
-  { noremap = true, silent = true }
-)
-vim.api.nvim_set_keymap(
-  "n",
-  "<D-LeftMouse>",
-  "<cmd>lua vim.lsp.buf.definition()<CR>",
-  { noremap = true, silent = true }
-)
-
--- Telescope key mappings for fuzzy search and LSP usage search
-vim.api.nvim_set_keymap("n", "<leader>gr", "<cmd>Telescope lsp_references<CR>", { noremap = true, silent = true })
-
-vim.api.nvim_set_keymap("n", "<leader>gd", "<cmd>Telescope lsp_definitions<CR>", { noremap = true, silent = true })
-
-vim.api.nvim_set_keymap("n", "<leader>gi", "<cmd>Telescope lsp_implementations<CR>", { noremap = true, silent = true })
-
-vim.api.nvim_set_keymap(
-  "n",
-  "<leader>gw",
-  "<cmd>Telescope lsp_workspace_symbols<CR>",
-  { noremap = true, silent = true }
-)
+-- Basic Neovim settings
+vim.opt.number = true
+vim.opt.relativenumber = true
+vim.opt.mouse = "a"
+vim.opt.clipboard = "unnamedplus"
+vim.opt.termguicolors = true
+vim.opt.updatetime = 5000
+vim.o.guifont = "JetBrainsMonoNLNerdFont-ExtraBold.ttf"
 
 -- Install Lazy.nvim if it's not installed
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
@@ -40,7 +20,7 @@ if not vim.loop.fs_stat(lazypath) then
     "git",
     "clone",
     "--filter=blob:none",
-    "--branch=stable", -- Latest stable release
+    "--branch=stable",
     "https://github.com/folke/lazy.nvim.git",
     lazypath,
   })
@@ -49,29 +29,64 @@ vim.opt.rtp:prepend(lazypath)
 
 -- Load LazyVim and Lazy.nvim configurations
 require("config.lazy") -- This loads LazyVim setup
-require("lazy").setup("plugins.custom") -- This loads your custom plugins
 
--- Basic Neovim settings
-vim.opt.number = true
-vim.opt.relativenumber = true
-vim.opt.mouse = "a"
-vim.opt.clipboard = "unnamedplus"
-vim.opt.termguicolors = true
+-- Keymappings
+local function set_keymap(mode, lhs, rhs, opts)
+  vim.keymap.set(mode, lhs, rhs, opts or { noremap = true, silent = true })
+end
 
--- Command-click for definition
-vim.api.nvim_set_keymap(
-  "n",
-  "<D-LeftMouse>",
-  "<cmd>lua vim.lsp.buf.definition()<CR>",
-  { noremap = true, silent = true }
-)
+-- LSP and navigation keymaps
+set_keymap("n", "<A-S>", "<cmd>Lspsaga peek_definition<CR>")
+set_keymap("n", "<D-LeftMouse>", "<cmd>lua vim.lsp.buf.definition()<CR>")
 
--- Diagnostics display setup
+-- Telescope keymaps
+set_keymap("n", "<leader>gr", "<cmd>Telescope lsp_references<CR>")
+set_keymap("n", "<leader>gd", "<cmd>Telescope lsp_definitions<CR>")
+set_keymap("n", "<leader>gi", "<cmd>Telescope lsp_implementations<CR>")
+set_keymap("n", "<leader>gw", "<cmd>Telescope lsp_workspace_symbols<CR>")
+
+-- Buffer navigation
+set_keymap("n", "<Tab>", "<cmd>BufferLineCycleNext<CR>")
+set_keymap("n", "<S-Tab>", "<cmd>BufferLineCyclePrev<CR>")
+
+-- Diagnostics configuration
+-- Diagnostics configuration
+
+-- Simple error sign configuration
+local signs = { Error = "" }
+for type, icon in pairs(signs) do
+  local hl = "DiagnosticSign" .. type
+  vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
+end
+local function create_augroup(name, autocmds)
+  local group = vim.api.nvim_create_augroup(name, { clear = true })
+  for _, autocmd in ipairs(autocmds) do
+    vim.api.nvim_create_autocmd(autocmd.events, {
+      group = group,
+      pattern = autocmd.pattern,
+      callback = autocmd.callback,
+    })
+  end
+end
+
+-- Then update your autocommand definitions:
+
+create_augroup("YankHighlight", {
+  {
+    events = "TextYankPost",
+    pattern = "*",
+    callback = function()
+      vim.highlight.on_yank()
+    end,
+  },
+})
+
+-- Diagnostics configuration
 vim.diagnostic.config({
-  virtual_text = true,
+  virtual_text = false,
   signs = true,
-  update_in_insert = false,
   underline = true,
+  update_in_insert = false,
   severity_sort = true,
   float = {
     border = "rounded",
@@ -81,79 +96,63 @@ vim.diagnostic.config({
   },
 })
 
--- Highlight on yank
-local highlight_group = vim.api.nvim_create_augroup("YankHighlight", { clear = true })
-vim.api.nvim_create_autocmd("TextYankPost", {
-  callback = function()
-    vim.highlight.on_yank()
-  end,
-  group = highlight_group,
-  pattern = "*",
+-- Filter to show only errors in floats
+create_augroup("DiagnosticFloat", {
+  {
+    events = "CursorHold",
+    pattern = "*",
+    callback = function()
+      local line_diagnostics = vim.diagnostic.get(0, {
+        severity = {
+          min = vim.diagnostic.severity.ERROR,
+          max = vim.diagnostic.severity.ERROR,
+        },
+      })
+      if #line_diagnostics > 0 then
+        vim.diagnostic.open_float(nil, {
+          focusable = false,
+          border = "rounded",
+          source = "always",
+          prefix = " ",
+          scope = "line",
+        })
+      end
+    end,
+    3000,
+  },
+})
+vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
+  pattern = "*.prisma",
+  command = "set filetype=prisma",
 })
 
-vim.o.guifont = "JetBrainsMonoNLNerdFont-ExtraBold.ttf"
-vim.diagnostic.config({
-  virtual_text = false,
-  signs = true,
-  underline = true,
-  update_in_insert = false,
-  severity_sort = true,
-})
+-- Telescope configuration
+local telescope = require("telescope")
+local builtin = require("telescope.builtin")
 
-local signs = { Error = "", Warn = "", Info = "", Hint = "" }
-for type, icon in pairs(signs) do
-  local hl = "DiagnosticSign" .. type
-  vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-end
-
-vim.o.updatetime = 100
-
-vim.api.nvim_create_autocmd("CursorHold", {
-  buffer = vim.api.buffer,
-  callback = function()
-    local opts = {
-      focusable = false,
-      border = "rounded",
-      source = "always",
-      prefix = " ",
-      scope = "line",
-    }
-    vim.diagnostic.open_float(nil, opts)
-  end,
-})
-
-vim.api.nvim_create_autocmd({ "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" }, {
-  group = vim.api.nvim_create_augroup("float_diagnostic", { clear = true }),
-  callback = function()
-    vim.diagnostic.open_float(nil, { focus = false })
-  end,
-})
-vim.opt.termguicolors = true -- Enable 24-bit RGB color in the TUI
-vim.cmd([[
-  augroup FiletypePrisma
-    autocmd!
-    autocmd BufRead,BufNewFile *.prisma set filetype=prisma
-  augroup END
-]])
--- Add these lines near the end of your init.lua
 _G.search_all_files = function()
-  require("telescope.builtin").find_files({
+  builtin.find_files({
     hidden = true,
     no_ignore = true,
     search_dirs = { vim.fn.getcwd() },
+    previewer = false,
+    layout_config = {
+      height = 0.6,
+    },
   })
 end
-
 _G.search_all_buffers = function()
-  require("telescope.builtin").buffers({
+  builtin.buffers({
     sort_mru = true,
     ignore_current_buffer = true,
   })
 end
-vim.api.nvim_set_keymap("n", "<Tab>", ":bnext<CR>", { noremap = true, silent = true })
-vim.api.nvim_set_keymap("n", "<S-Tab>", ":bprevious<CR>", { noremap = true, silent = true })
-vim.lsp.handlers["textDocument/publishDiagnostics"] = vim.lsp.with(vim.lsp.diagnostic.on_publish_diagnostics, {
-  -- Increase debounce to control how often diagnostics are updated
-  update_in_insert = false, -- Set to true if you want updates while typing in insert mode
-  debounce = 100, -- Debounce time in milliseconds (lower value for quicker updates)
-})
+
+local function search_in_directory()
+  local dir = vim.fn.input("Enter directory to search: ", "", "dir")
+  if dir ~= "" then
+    builtin.live_grep({ search_dirs = { dir } })
+  end
+end
+
+set_keymap("n", "<leader>sd", search_in_directory)
